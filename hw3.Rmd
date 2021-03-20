@@ -17,6 +17,7 @@ library(tidyverse)
 library(lubridate)
 library(formatR)
 library(nycflights13)
+library(kableExtra)
 ```
 
 ## 5.5.2
@@ -26,7 +27,7 @@ library(nycflights13)
 
 
     ```{r, q_5_5_2_1}
-flights %>% 
+flightsDated <- flights %>% 
   mutate(cal_dep = make_datetime(year, month, day, 
                                  dep_time %/% 100, ## hour
                                  dep_time %% 100)) %>% ## minute
@@ -42,8 +43,8 @@ flights %>%
 
   
     ```{r, on-time}
-flights%>%
-  filter(!is.na(arr_delay)) %>%
+flightsDated %>%
+  drop_na(arr_delay) %>%
   mutate(arr_delayed = if_else(arr_delay <= 0, FALSE, TRUE)) %>%
   group_by(tailnum) %>%
   summarize(prop_delayed = mean(arr_delayed),
@@ -57,8 +58,8 @@ flights%>%
     (a) What do you notice about the planes with a 0% on-time record?
     
     ```{r, zero-on-time}
-    flights%>%
-      filter(!is.na(arr_delay)) %>%
+    flightsDated %>%
+      drop_na(arr_delay) %>%
       mutate(arr_delayed = if_else(arr_delay <= 0, FALSE, TRUE)) %>%
       group_by(tailnum) %>%
       summarize(prop_delayed = mean(arr_delayed),
@@ -76,8 +77,8 @@ flights%>%
     
     
     ```{r, worst-on-time20}
-    worstOnTime <- flights%>% 
-      filter(!is.na(arr_delay)) %>%
+    worstOnTime <- flightsDated %>% 
+      drop_na(arr_delay) %>%
       mutate(arr_delayed = if_else(arr_delay <= 0, FALSE, TRUE)) %>%
       group_by(tailnum) %>%
       summarize(prop_delayed = mean(arr_delayed),
@@ -98,11 +99,86 @@ flights%>%
 
 
 ```{r, avoid_delays}
-flights %>% 
+flightsDelayByHour <- flightsDated %>% 
+  drop_na(cal_dep) %>%
   group_by(hour) %>% 
   summarise(arr_delay = mean(arr_delay, na.rm = TRUE)) %>% 
-  arrange(arr_delay)
+  arrange(arr_delay) %>%
+  ungroup() %>%
+  filter(arr_delay <= 0)
+  
 ```
       
+It appears the best time/hour to avoid delay is between `r min(flightsDelayByHour$hour)` and `r max(flightsDelayByHour$hour)` in a 24-hour format time.
 
-4. For each destination, compute the total minutes of delay.  For each flight, compute the proportion of the today delay for its destination  
+4. For each destination, compute the total minutes of delay.  For each flight, compute the proportion of the total delay for its destination  
+
+```{r destination, message=FALSE}
+# total minutes of delay for each destination
+flightsDated %>%
+  filter(arr_delay > 0) %>% # remove negative or zero delay
+  group_by(dest) %>%
+  summarise(total_arr_delay = sum(arr_delay))
+
+# proportion of the total delay for each of flight's destination
+flightsDated %>%
+  filter(arr_delay > 0) %>% ## remove negative or zero delay
+  group_by(dest, origin, carrier, flight) %>% 
+  summarise(total_arr_delay = sum(arr_delay)) %>% 
+  mutate(prop_delay = total_arr_delay/sum(total_arr_delay)) %>% 
+  arrange(dest) %>% 
+  select(-total_arr_delay)
+```
+
+
+## --
+
+4. Find the five worst days of 2013 for delays.  Define the worst days as those with the highest proprotion of flights which are either cancelled or have departure delay over 15 minutes.  Then use the appropropriate join to add the `weather` data to `flights`.  Does extreme weather explain the delays on these days? 
+
+```{r, worstdays, results='asis'}
+weatherDated <- weather %>% 
+  mutate(cal_dep = make_datetime(year, month, day)) %>% 
+  select(-year, -month, -day, -hour) %>% 
+  select(cal_dep, everything()) %>%
+  group_by(day = floor_date(cal_dep, "day")) %>%
+  summarise(ave_temp = mean(temp),
+            ave_dewp = mean(dewp),
+            ave_humid = mean(humid),
+            ave_pressure = mean(pressure),
+            ave_visib = mean(visib)) 
+
+
+flightsCancelDelay <- flightsDated %>% 
+  mutate(cancel_delay = if_else(dep_delay > 15 | is.na(cal_dep), TRUE, FALSE)) %>%
+  select(cal_dep, origin, dep_delay, cancel_delay) %>% 
+  #filter(cancel_delay == TRUE) %>%
+  group_by(day = floor_date(cal_dep, "day")) %>%
+  summarise(n_flights = n(),
+            n_cancel_delay = sum(cancel_delay),
+            prop_cancel_delay = mean(cancel_delay)) %>%
+  drop_na(day) %>%
+  arrange(desc(prop_cancel_delay)) %>% 
+  inner_join(weatherDated, by = "day")
+
+kbl(flightsCancelDelay %>% select(day, prop_cancel_delay, ave_humid) %>%
+      head(n = 5))
+
+
+
+```
+
+
+The five worst days of 2013 delays might be due to high humidity.  
+
+
+```{r, flightsModel_plot}
+flightsModel <- lm(prop_cancel_delay ~ ave_humid, data = flightsCancelDelay)
+summary(flightsModel)
+plot(prop_cancel_delay ~ ave_humid, 
+     data = flightsCancelDelay, 
+     main = "Does Humidity Contribute To Delay or Cancellation of Flights?",
+     xlab = "average humidity", 
+     ylab = "proportion of cancelled or delayed flights")
+abline(flightsModel, col = "red")
+```
+
