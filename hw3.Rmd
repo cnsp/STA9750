@@ -89,4 +89,17 @@ flights%>%
     ```
     
     The plane with the worst on-time record that has at least 20 flights is `r worstOnTime$tailnum`.  It has a total of `r worstOnTime$number_flights` flights on record with `r worstOnTime$prop_delayed` proportion of its flights delayed averaging `r round(worstOnTime$ave_delay, 0)` minutes per flight. 
+    
+    
+## 5.7.1
+
+
+3. What time of day should you fly if you want to avoid delays as much as possible? 
+
+
+```{r, avoid_delays}
+
+```
       
+
+4. For each destination, compute teh total minutes of delay.  For each flight, compute the proportion of the today delay for its destination  
