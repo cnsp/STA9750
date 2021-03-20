@@ -1,0 +1,92 @@
+---
+title: "hw3"
+author: "Christopher Panlasigui"
+date: "3/17/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  comment = NA,
+  results = "hide"
+  )
+library(tidyverse)
+library(lubridate)
+library(formatR)
+library(nycflights13)
+```
+
+## 5.5.2
+
+
+1. Consider re-using your code from problem #4 of HW2.  Use `lubridate` and other tidyverse command to add a column to flights called `cal_dep` which is a datetime (dttm) variable representing the actual (_not_ scheduled) departure date and time. 
+
+
+    ```{r, q_5_5_2_1}
+flights %>% 
+  mutate(cal_dep = make_datetime(year, month, day, 
+                                 dep_time %/% 100, ## hour
+                                 dep_time %% 100)) %>% ## minute
+  select(-year, -month, -day, -dep_time) %>% ## hide columns being replaced by cal_dep
+  select(cal_dep, everything()) 
+    ```
+
+
+## --
+
+
+2. Which plane `(tailnum)` has the worst on-time record? Define "on-time" as having `arr_delay \le 0`; the on-time record is then the proportion of flights which were on-time.  Also include in your summary the total number of lights in the tibble for each plane. 
+
+  
+    ```{r, on-time}
+flights%>%
+  filter(!is.na(arr_delay)) %>%
+  mutate(arr_delayed = if_else(arr_delay <= 0, FALSE, TRUE)) %>%
+  group_by(tailnum) %>%
+  summarize(prop_delayed = mean(arr_delayed),
+            ave_delay = mean(arr_delay, na.rm = TRUE),
+            number_flights = n()) %>%
+  ungroup() %>%
+  arrange(desc(prop_delayed))
+    ```
+
+
+    (a) What do you notice about the planes with a 0% on-time record?
+    
+    ```{r, zero-on-time}
+    flights%>%
+      filter(!is.na(arr_delay)) %>%
+      mutate(arr_delayed = if_else(arr_delay <= 0, FALSE, TRUE)) %>%
+      group_by(tailnum) %>%
+      summarize(prop_delayed = mean(arr_delayed),
+                ave_delay = mean(arr_delay, na.rm = TRUE),
+                number_flights = n()) %>%
+      ungroup() %>% filter(prop_delayed == 1) %>% 
+      arrange(desc(number_flights))
+    ```
+    
+    
+      The planes with 0% on-time record have very few flights.  The highest number of flights with 0% on-time record is 5.
+     
+    
+    (b) Which plane, among those with at least twenty flights, has the worst on-time record?
+    
+    
+    ```{r, worst-on-time20}
+    worstOnTime <- flights%>% 
+      filter(!is.na(arr_delay)) %>%
+      mutate(arr_delayed = if_else(arr_delay <= 0, FALSE, TRUE)) %>%
+      group_by(tailnum) %>%
+      summarize(prop_delayed = mean(arr_delayed),
+                ave_delay = mean(arr_delay, na.rm = TRUE),
+                number_flights = n()) %>% 
+      ungroup() %>% 
+      filter(number_flights >= 20) %>%  ## filter only with 20 or more flights 
+      slice(which.max(prop_delayed))
+    ```
+    
+    The plane with the worst on-time record that has at least 20 flights is `r worstOnTime$tailnum`.  It has a total of `r worstOnTime$number_flights` flights on record with `r worstOnTime$prop_delayed` proportion of its flights delayed averaging `r round(worstOnTime$ave_delay, 0)` minutes per flight. 
+      
