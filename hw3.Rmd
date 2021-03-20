@@ -98,8 +98,11 @@ flights%>%
 
 
 ```{r, avoid_delays}
-
+flights %>% 
+  group_by(hour) %>% 
+  summarise(arr_delay = mean(arr_delay, na.rm = TRUE)) %>% 
+  arrange(arr_delay)
 ```
       
 
-4. For each destination, compute teh total minutes of delay.  For each flight, compute the proportion of the today delay for its destination  
+4. For each destination, compute the total minutes of delay.  For each flight, compute the proportion of the today delay for its destination  
