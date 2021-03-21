@@ -5,6 +5,8 @@ date: "3/17/2021"
 output:
   pdf_document:
     latex_engine: xelatex
+  html_document:
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
@@ -39,7 +41,7 @@ flightsDated <- flights %>%
 ## --
 
 
-2. Which plane `(tailnum)` has the worst on-time record? Define "on-time" as having `arr_delay \le 0`; the on-time record is then the proportion of flights which were on-time.  Also include in your summary the total number of lights in the tibble for each plane. 
+2. Which plane `(tailnum)` has the worst on-time record? Define "on-time" as having `arr_delay` \(\le 0\)`; the on-time record is then the proportion of flights which were on-time.  Also include in your summary the total number of lights in the tibble for each plane. 
 
   
     ```{r, on-time}
@@ -133,52 +135,135 @@ flightsDated %>%
 
 ## --
 
-4. Find the five worst days of 2013 for delays.  Define the worst days as those with the highest proprotion of flights which are either cancelled or have departure delay over 15 minutes.  Then use the appropropriate join to add the `weather` data to `flights`.  Does extreme weather explain the delays on these days? 
+4. Find the five worst days of 2013 for delays.  Define the worst days as those with the highest proportion of flights which are either canceled or have departure delay over 15 minutes.  Then use the appropriate join to add the `weather` data to `flights`.  Does extreme weather explain the delays on these days? 
 
 ```{r, worstdays, results='asis'}
+# set up weather data by day
 weatherDated <- weather %>% 
+  filter(!wind_speed >= 1048) %>% ## remove noticeable outlier that may be typo error
   mutate(cal_dep = make_datetime(year, month, day)) %>% 
   select(-year, -month, -day, -hour) %>% 
   select(cal_dep, everything()) %>%
   group_by(day = floor_date(cal_dep, "day")) %>%
   summarise(ave_temp = mean(temp),
+            max_temp = max(temp),
             ave_dewp = mean(dewp),
             ave_humid = mean(humid),
+            max_wind_speed = max(wind_speed),
             ave_pressure = mean(pressure),
-            ave_visib = mean(visib)) 
+            ave_visib = mean(visib),
+            min_visib = min(visib)) 
 
 
 flightsCancelDelay <- flightsDated %>% 
   mutate(cancel_delay = if_else(dep_delay > 15 | is.na(cal_dep), TRUE, FALSE)) %>%
   select(cal_dep, origin, dep_delay, cancel_delay) %>% 
-  #filter(cancel_delay == TRUE) %>%
   group_by(day = floor_date(cal_dep, "day")) %>%
   summarise(n_flights = n(),
             n_cancel_delay = sum(cancel_delay),
-            prop_cancel_delay = mean(cancel_delay)) %>%
+            prop_cancel_delay = round(mean(cancel_delay), 2)) %>%
   drop_na(day) %>%
   arrange(desc(prop_cancel_delay)) %>% 
   inner_join(weatherDated, by = "day")
 
-kbl(flightsCancelDelay %>% select(day, prop_cancel_delay, ave_humid) %>%
+kbl(flightsCancelDelay %>% 
+      select(day, prop_cancel_delay, ave_humid) %>%
       head(n = 5))
-
-
 
 ```
 
 
-The five worst days of 2013 delays might be due to high humidity.  
+The five worst days of 2013 delays might be due to high humidity. However, it appears to be a weak correlation.  
+
+\newpage
+
+```{r, vs_humid, out.width="75%"}
+flightsByHumid <- flightsCancelDelay %>%
+  drop_na(ave_humid) %>%
+  select(day, prop_cancel_delay, ave_humid)
+
+flightsByHumid %>%
+  ggplot(aes(x = ave_humid, y = prop_cancel_delay)) +
+  geom_point(shape = 1) +
+  geom_point(data = 
+               flightsByHumid %>%
+               slice(1:5), 
+             shape = 1, 
+             color = "red") +
+  labs(title = "Delayed or Cancelled Flights in 2013 vs Average Humidity",
+       x = "average daily humidity",
+       y = "proportion of delayed or cancelled flights") +
+  theme_bw()
+
+```
+
+\newpage
+ 
+```{r vs_temp, out.width="75%"}
+## maximum temperature
+flightsByTemp <- flightsCancelDelay %>%
+  drop_na(max_temp) %>% 
+  select(day, prop_cancel_delay, max_temp)
+
+flightsByTemp %>%
+  drop_na(max_temp) %>%
+  ggplot(aes(x = max_temp, y = prop_cancel_delay)) +
+  geom_point(shape = 1) + 
+  geom_point(data = 
+               flightsByTemp %>% 
+               slice(1:5),
+             shape = 1,
+             color = "red") +
+  labs(title = "Delayed or Cancelled Flights in 2013 vs Maximum Temperature (F)",
+       x = "max daily temperature",
+       y = "proportion of delayed or cancelled flights") +
+  theme_bw()
+```  
+
+\newpage
+
+```{r, vs_wind, out.width="75%"}
+## maximum wind speed
+flightsByWindSpeed <- flightsCancelDelay %>%
+  drop_na(max_wind_speed) %>%
+  select(day, prop_cancel_delay, max_wind_speed) 
+
+  
+flightsByWindSpeed %>%
+  ggplot(aes(x = max_wind_speed, y = prop_cancel_delay)) +
+  geom_point(shape = 1) +
+  geom_point(data = 
+               flightsByWindSpeed %>%
+               slice(1:5),
+             shape = 1,
+             color = "red") +
+  labs(title = "Delayed or Cancelled Flights in 2013 vs Maximum Wind Speed (MPH)",
+       x = "max daily windspeed",
+       y = "proportion of delayed or cancelled flights") +
+  theme_bw()
+```
+
+\newpage
+
+```{r vs_visibility, out.width="75%"}
+## minimum daily visibility
+flightsVisibility <- flightsCancelDelay %>%
+  drop_na(min_visib) %>%
+  select(day, prop_cancel_delay, min_visib) 
 
 
-```{r, flightsModel_plot}
-flightsModel <- lm(prop_cancel_delay ~ ave_humid, data = flightsCancelDelay)
-summary(flightsModel)
-plot(prop_cancel_delay ~ ave_humid, 
-     data = flightsCancelDelay, 
-     main = "Does Humidity Contribute To Delay or Cancellation of Flights?",
-     xlab = "average humidity", 
-     ylab = "proportion of cancelled or delayed flights")
-abline(flightsModel, col = "red")
+flightsVisibility %>%
+  ggplot(aes(x = min_visib, y = prop_cancel_delay)) +
+  geom_point(shape = 1) +
+  geom_point(data = 
+               flightsVisibility %>%
+               slice(1:5),
+             shape = 1,
+             color = "red") +
+  labs(title = "Delayed or Cancelled Flights in 2013 vs Minimum Visibility (Miles)",
+       x = "minimum visibility",
+       y = "proportion of delayed or cancelled flights") +
+  theme_bw()
+
 ```
 
